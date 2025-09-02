@@ -2,6 +2,10 @@
 
 WebMaxLib is a Python library for interacting with the Max messaging service via WebSocket. It provides a simple, Pyrogram-inspired API for sending messages, images, editing or deleting messages, and handling incoming messages with a flexible filter system. This library is designed for developers who want to automate interactions with the Max messenger, handling authentication, chats, and message processing.
 
+## Problem
+
+Repo temporarily unactive. Test account banned by [experiment](https://t.me/WebMaxLib/17).
+
 ## Features
 
 - **WebSocket Communication**: Connects to the Max messaging service using WebSocket for real-time interaction.
