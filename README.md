@@ -17,18 +17,12 @@ Repo temporarily unactive. Test account banned by [experiment](https://t.me/WebM
 
 ## Installation
 
-1. Clone the repository:
+1. Using pip:
    ```bash
-   git clone https://github.com/xNoBanOnlyZXC/WebMaxLib.git
-   cd WebMaxLib
+   pip install -y maxlib
    ```
 
-2. Install dependencies:
-   ```bash
-   pip install -y websockets requests
-   ```
-
-3. Set up your project:
+2. Set up your project:
    - Place your code in a Python environment.
    - Ensure you have a valid authentication token or phone number for the Max service.
 
