@@ -7,5 +7,8 @@ class BaseException(Exception):
 class VerifyCodeWrong(BaseException):
     pass
 
+class AuthBlocked(BaseException):
+    pass
+
 class UserNotFound(BaseException):
     pass

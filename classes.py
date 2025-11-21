@@ -28,7 +28,7 @@ class Name:
 
 # region Contact
 class Contact:
-    def __init__(self, client, accountStatus = None, baseUrl = None, names = None, phone = None, description = None, options = None, photoId = None, updateTime = None, id = None, baseRawUrl = None, gender = None, link = None):
+    def __init__(self, client, contacts = None, profileOptions= None, accountStatus = None, baseUrl = None, names = None, phone = None, description = None, options = None, photoId = None, updateTime = None, id = None, status = None, baseRawUrl = None, gender = None, link = None):
         """
         Represents a contact with detailed profile information.
 
@@ -36,7 +36,9 @@ class Contact:
         phone number, description, and other metadata.
         """
         self._client = client
-        self.accountStatus = accountStatus
+        self.contacts = contacts
+        self.profile_options = profileOptions
+        self.account_status = accountStatus
         self.base_url = baseUrl
         self.names = [Name(**n) for n in names]
         self.phone = phone
@@ -47,6 +49,7 @@ class Contact:
         self.id = id
         self.link = link
         self.gender = gender
+        self.status = status
         self.base_raw_url = baseRawUrl
     
     # region add()
@@ -75,12 +78,12 @@ class User:
         received from the server.
         """
         self._client = client
-        self.contact = Contact(client, **profile)
-        _id = client.me.contact.id if client.me else profile["id"]
+        self.contact = Contact(client, profile["profileOptions"], **profile["contact"])
+        _id = client.me.contact.id if client.me else profile["contact"]["id"]
         if not _f:
-            self.chat = Chat(self._client, profile["id"] ^ _id)
+            self.chat = Chat(self._client, profile["contact"]["id"] ^ _id)
 
-        if profile["id"] != _id:
+        if profile["contact"]["id"] != _id:
 
             pass
 

@@ -1,14 +1,20 @@
 from websockets.sync.client import connect
-import json
+from maxlib import __version__, __license__
+import json, os
 import threading
+import logging
 import time
 from uuid import uuid4
-from classes import *
-from errors import *
+from .classes import *
+from .errors import *
+
+logger = logging.getLogger('MaxLib')
+logger.setLevel(logging.ERROR) # DEBUG INFO ERROR CRITICAL CRITICAL+1
+logger.addHandler(logging.NullHandler()) 
 
 # region class MaxClient
 class MaxClient:
-    def __init__(self, token: str = None, phone: str = None):
+    def __init__(self, name: str, token: str = None, phone: str = None):
         """
         Initializes a new instance of the MaxClient class.
 
@@ -20,14 +26,19 @@ class MaxClient:
             ```
             # You can use only token or only phone if have one.
             client = MaxClient(token="token", phone="number")
-            # Now you can use client methods like connect(), auth(), etc.
+            
+            # OR
+
+            client = MaxClient("sessionname")
+            # Now you can use client methods.
             ```
         """
 
-        # print("Loaded WebMaxLib")
+        logger.debug("MaxLib loaded")
 
         self._seq = 0
 
+        self.session_file = f"{name}.session"
         self.phone_number = phone
         self.auth_token = token
         self.user_agent = self._generate_user_agent()
@@ -74,11 +85,11 @@ class MaxClient:
                 "userAgent": {
                     "deviceType": "WEB",
                     "locale": "ru",
-                    "osVersion": "Linux",
-                    "deviceName": "WebMax Lib",
-                    "headerUserAgent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
                     "deviceLocale": "ru",
-                    "appVersion": "4.8.42",
+                    "osVersion": "Linux",
+                    "deviceName": "Firefox",
+                    "headerUserAgent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+                    "appVersion": "25.10.2",
                     "screen": "1080x1920 1.0x",
                     "timezone": "Europe/Moscow"
                 },
@@ -103,8 +114,13 @@ class MaxClient:
             ```
         """
         if self._connected:
+            logger.info("Already connected")
             return
-        self.websocket = connect("wss://ws-api.oneme.ru/websocket")
+        self.websocket = connect(
+                "wss://ws-api.oneme.ru/websocket",
+                user_agent_header="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+                origin="https://web.max.ru"
+            )
         self.websocket.send(self.user_agent)
         self.websocket.recv()
 
@@ -128,9 +144,13 @@ class MaxClient:
         }))
 
         p = json.loads(self.websocket.recv())['payload']
+        with open("op19.json", "w", encoding="utf-8") as f:
+            f.write(json.dumps(p, ensure_ascii=False, indent=4))
+        
         usr = User(self, p['profile'])
         self.me = usr
         self._connected = True
+        logger.info("Connected to WS")
 
         if self._on_connect:
             self._on_connect()
@@ -151,12 +171,14 @@ class MaxClient:
             ```
         """
         if not self._connected:
+            logger.info("Already disconnected")
             return
         if self.websocket:
             self.websocket.close()
             self._seq = 0
         self._connected = False
         self.websocket = None
+        logger.info("Disconnected from WS")
 
     # region set_token()
     def set_token(self, token):
@@ -181,7 +203,7 @@ class MaxClient:
         for filter, func in self.handlers:
             if filter(self, msg):
                 func(self, msg)
-                return  
+                return
 
     # region _listener()
     def _listener(self):
@@ -189,34 +211,51 @@ class MaxClient:
         while not self._t_stop:
             try:
                 recv = json.loads(self.websocket.recv())
+                print(recv)
             except Exception as e:
-                print(e)
-                exit(0)
+                # print(e)
+                # exit(0)
                 raise
             opcode = recv["opcode"]
             payload = recv["payload"]
+            seq = recv["seq"]
             
             match opcode:
                 case 1:
                     self.websocket.send(json.dumps({
                         "ver": 11,
-                        "cmd": 0,
-                        "seq": self.seq,
+                        "cmd": 1,
+                        "seq": seq,
                         "opcode": 1,
                         "payload": {"interactive": False}
                     }))
+                    # print(json.loads(
                     self.websocket.recv()
+                    # ))
 
                 case 128:
-                    # print(recv)
+                    logger.debug("Listener case 128: "+recv)
                     msg = Message(self, payload["chatId"], **payload["message"])
                     self._hlprocessor(msg)
 
                 case _:
                     pass
 
-            print(json.dumps(recv, ensure_ascii=False, indent=4))
+            # print(json.dumps(recv, ensure_ascii=False, indent=4))
         self._t_stop = False
+
+    def _pingmaker(self):
+        while True:
+            self.websocket.send(json.dumps({
+                "ver": 11,
+                "cmd": 0,
+                "seq": self.seq,
+                "opcode": 1,
+                "payload": {"interactive": False}
+            }))
+            self.websocket.recv()
+            time.sleep(30)
+
 
     # region run()
     def run(self):
@@ -232,8 +271,17 @@ class MaxClient:
             client.run()
             ```
         """
+        if os.path.exists(self.session_file) and not self.auth_token:
+            with open(self.session_file, "r") as f:
+                self.auth_token = f.readline()
+        else:
+            while True:
+                _ = self.auth()
+                if _.__class__ != AuthBlocked:
+                    break
         self.connect()
         self._t = threading.Thread(target=self._listener, name="WebMaxListener")
+        self._t = threading.Thread(target=self._pingmaker, name="WebMaxPingmaker")
         self._t.start()
     
     def stop(self):
@@ -309,10 +357,13 @@ class MaxClient:
 
         if error == "verify.code.wrong":
             raise VerifyCodeWrong(payload["error"], payload["title"])
+        elif error == "auth.blocked":
+            raise AuthBlocked(payload["error"], payload["title"])
+
         return token_resp
 
     # region auth()
-    def auth(self, phone_number: str):
+    def auth(self, phone_number: str = None):
         """
         Performs the full authentication process interactively.
 
@@ -322,9 +373,19 @@ class MaxClient:
         Usage:
         ```
         user = client.auth("+7xxxxxxxxxx")
+
+        # OR
+
+        user = client.auth()
         # Follow the prompt to enter the SMS code.
         ```
         """
+        print(f"Welcome to MaxLib (version {__version__})")
+        print(f"MaxLib is free software and comes with ABSOLUTELY NO WARRANTY. Licensed\n"
+              f"under the terms of the {__license__}.\n")
+
+        if not phone_number:
+            phone_number = input("Phone number: ")
 
         code_resp = self._start_auth(phone_number)
 
@@ -332,8 +393,7 @@ class MaxClient:
             raise ValueError(code_resp['payload']['error'] + ": " + code_resp['payload']['localizedMessage'])
             
         token = code_resp['payload']['token']
-        print(f"Auth token received. Please enter the code sent to your phone.\n")
-
+        print(f"Auth token received. Please enter the code sent to your phone.")
         while True:
             try:
                 code = input("Auth code: ")
@@ -346,11 +406,17 @@ class MaxClient:
                 print(f"{vcw.title} ({vcw.error})")
                 continue
 
+            except AuthBlocked as ab:
+                print(f"{ab.title} ({ab.error})")
+                return ab
+
             except Exception as e:
                 print(e)
                 continue
-
+        
         self.auth_token = payload['tokenAttrs']['LOGIN']['token']
+        with open(self.session_file, "w") as f:
+            f.write(self.auth_token)
         usr = User(self, payload['profile'])
         self.me = usr
         return self.me
