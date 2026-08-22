@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "maxlib"
+version = "3.1.0"
+description = "Next-generation asynchronous Python framework for MAX (max.ru / OneMe) messenger mobile and web API"
+readme = "README.md"
+authors = [{ name = "Onlysq" }]
+license = { text = "GPL-3.0" }
+requires-python = ">=3.9"
+keywords = ["max", "oneme", "messenger", "vkmax", "userbot", "bot", "asyncio", "pyrogram", "aiogram"]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: AsyncIO",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "msgpack>=1.0.5",
+    "lz4>=4.0.0",
+    "aiohttp>=3.8.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+fast = [
+    "zstandard>=0.21.0",
+]
+
+[project.scripts]
+maxlib = "maxlib.cli.__main__:cli_main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["maxlib*"]
