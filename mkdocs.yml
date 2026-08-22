@@ -1,0 +1,69 @@
+site_name: MaxLib
+site_description: Next-generation asynchronous Python framework for MAX messenger
+site_author: imsudoer
+site_url: https://imsudoer.github.io/MaxLib/
+repo_url: https://github.com/imsudoer/MaxLib
+repo_name: imsudoer/MaxLib
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  palette:
+    # Palette toggle for automatic / light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Overview: index.md
+  - Quick Start: quickstart.md
+  - Guides:
+      - Authentication & Sessions: authentication.md
+      - Dispatcher & Filters: dispatcher-and-filters.md
+      - Bound Methods: bound-methods.md
+      - Text Formatting: formatting.md
+      - Media Handling: media.md
+      - FSM Dialogs: fsm.md
+      - Pagination & Iterators: pagination.md
+      - Multi-Account (ClientPool): multi-account.md
+  - Reference:
+      - Protocol Internals: protocol-internals.md
+      - Opcodes Reference: opcodes-reference.md

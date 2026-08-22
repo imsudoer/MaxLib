@@ -16,8 +16,9 @@ op19.json
 # Distribution / packaging
 .Python
 build/
-develop-eggs/
 dist/
+site/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
