@@ -1,205 +1,409 @@
-# WebMaxLib
+# MaxLib
 
-WebMaxLib is a Python library for interacting with the Max messaging service via WebSocket. It provides a simple, Pyrogram-inspired API for sending messages, images, editing or deleting messages, and handling incoming messages with a flexible filter system. This library is designed for developers who want to automate interactions with the Max messenger, handling authentication, chats, and message processing.
+Асинхронный Python фреймворк для работы с мессенджером MAX (max.ru / OneMe).
 
-## Problem
+Я начинал писать эту либу для себя, чтобы автоматизировать действия в MAX и писать ботов/юзерботов. Стиль API и структура намеренно сделаны максимально похожими на **Pyrogram**, чтобы любой, кто писал юзерботов для Телеграма, мог въехать за пару минут.
 
-Repo temporarily unactive. Test account banned by [experiment](https://t.me/WebMaxLib/17).
+Внутри используется настоящий мобильный бинарный протокол приложения (TLS, MsgPack, сжатие LZ4/Zstandard), а не урезанный веб-сокет. Это дает доступ ко всем методам мессенджера и высокую скорость работы.
 
-## Features
+---
 
-- **WebSocket Communication**: Connects to the Max messaging service using WebSocket for real-time interaction.
-- **Authentication**: Supports token-based and phone-based authentication.
-- **Message Handling**: Send, reply, edit, and delete messages with ease.
-- **Image Support**: Upload and send images to chats.
-- **Filter System**: Flexible filters for processing incoming messages, including text, command, user ID, self-sent messages, and logical combinations (AND, OR, NOT).
-- **Object-Oriented Design**: Classes like `User`, `Contact`, `Chat`, and `Message` for intuitive interaction with the service.
+## Установка
 
-## Installation
+Требуется Python 3.9 или выше.
 
-1. Using pip:
-   ```bash
-   pip install -y maxlib
-   ```
+```bash
+pip install -U maxlib
+```
 
-2. Set up your project:
-   - Place your code in a Python environment.
-   - Ensure you have a valid authentication token or phone number for the Max service.
+Зависимости ставятся автоматически (`msgpack`, `lz4`, `aiohttp`, `websockets`).
+Если хотите максимальную скорость сжатия, можно докинуть zstandard:
 
-## Usage
+```bash
+pip install zstandard
+```
 
-### Basic Example
+---
 
-The following example demonstrates how to set up a `MaxClient`, handle connection events, and respond to specific commands:
+## Быстрый старт
+
+### Простой эхо-бот
 
 ```python
-from max import MaxClient as Client
-from filters import filters
-from classes import Message
-import time
+from maxlib import MaxClient, filters, Message
 
-# Initialize client with a token
-token = "your_auth_token"
-client = Client(token)
+client = MaxClient("my_bot")
 
-# Handle connection event
+
 @client.on_connect
-def onconnect():
-    print(f"Get User, full name: {client.me.contact.names[0].name}, number: {client.me.contact.phone} | {client.me.contact.id}")
+async def on_connect():
+    print(f"Бот запущен под аккаунтом: {client.me.name} (ID: {client.me.id})")
 
-# Example: bug with replymessage
-@client.on_message(filters.command("wtf"))
-def on_wtf(client: Client, message: Message):
-    m = client.send_message(message.chat.id, "This message not exists")
-    time.sleep(1)
-    m2 = m.reply("Reply to removed message")
-    time.sleep(1)
-    m.delete()
-    message.reply("Max - most bugged messenger.")
 
-# Handle messages with "/z" command
-@client.on_message(filters.command("z"))
-def on_z(client: Client, message: Message):
-    message.reply("I have Z!")
+@client.on_message(filters.command("start"))
+async def start_cmd(client: MaxClient, message: Message):
+    await message.reply(
+        "Привет! Я бот на MaxLib.\n"
+        "Отправь мне текст, и я повторю его."
+    )
 
-# Run the client
+
+@client.on_message(~filters.me & filters.text)
+async def echo_handler(client: MaxClient, message: Message):
+    await message.reply(f"Вы написали: {message.text}")
+
+
+if __name__ == "__main__":
+    client.run()
+```
+
+При первом запуске скрипт запросит номер телефона и SMS-код в консоли, после чего сохранит токен в файл `my_bot.session` и дальше будет входить автоматически.
+
+---
+
+## Авторизация и сессии
+
+### Вход по номеру телефона
+Если файла сессии еще нет, `client.run()` или `await client.start()` интерактивно запросят код в терминале:
+
+```python
+from maxlib import MaxClient
+
+client = MaxClient("session_name")
 client.run()
 ```
 
-### Authentication with Phone Number
-
-If you don't have a token, you can authenticate using a phone number:
+### Вход по готовому токену
+Если у вас уже есть токен от профиля:
 
 ```python
-client = Client()
-client.auth("+7xxxxxxxxxx")  # Replace with your phone number
-print(client.auth_token)  # Prints the obtained token
+client = MaxClient("session_name", token="ваш_auth_token")
 client.run()
 ```
 
-### Using Filters
+### Консольный логин через CLI
+Можно авторизовать сессию заранее через терминал:
 
-Filters allow you to process incoming messages based on specific criteria. Combine filters using logical operators (`&`, `|`, `~`):
-
-```python
-# Respond to messages from the authenticated user saying "hello"
-@client.on_message(filters.me & filters.text("hello"))
-def handle_my_hello(client: Client, message: Message):
-    message.reply("I said hello!")
-
-# Respond to messages NOT from the authenticated user with "/start"
-@client.on_message(~filters.me & filters.command("start"))
-def handle_non_me_start(client: Client, message: Message):
-    message.reply("Someone else used /start!")
+```bash
+python -m maxlib login -s my_session -p +79991234567
 ```
 
-## Filter System
+Проверить профиль сохраненной сессии:
 
-The library includes a powerful filter system inspired by Pyrogram, allowing you to handle messages based on various conditions:
-
-- **`filters.text(text)`**: Matches messages with exact text (case-insensitive).
-- **`filters.command(command, prefix="/")`**: Matches messages starting with a command (e.g., `/start`).
-- **`filters.user_id(user_id)`**: Matches messages from a specific user ID.
-- **`filters.me`**: Matches messages sent by the authenticated user.
-- **`filters.any`**: Passes all messages.
-- **Logical Operators**:
-  - `&` (AND): Combine filters to require all to pass (e.g., `filters.text("hello") & filters.me`).
-  - `|` (OR): Combine filters to pass if any succeed (e.g., `filters.text("hello") | filters.text("world")`).
-  - `~` (NOT): Negate a filter (e.g., `~filters.me` for messages not from the authenticated user).
-
-Example:
-```python
-@client.on_message(filters.me | filters.command("help"))
-def handle_me_or_help(client: Client, message: Message):
-    message.reply("Either I sent this or it's a /help command!")
+```bash
+python -m maxlib info -s my_session
 ```
 
-## Classes
+Запустить интерактивную консоль Python с готовым подключенным клиентом:
 
-### `MaxClient`
-The main class for interacting with the Max service.
+```bash
+python -m maxlib shell -s my_session
+```
 
-- **Methods**:
-  - `__init__(token=None, phone=None)`: Initializes the client with an optional token or phone number.
-  - `connect()`: Establishes a WebSocket connection.
-  - `disconnect()`: Closes the connection.
-  - `set_token(token)`: Updates the authentication token.
-  - `run()`: Starts the client and listener thread.
-  - `stop()`: Stops the client and listener.
-  - `auth(phone_number)`: Performs interactive authentication.
-  - `send_message(chat_id, text, reply_id=None, notify=True)`: Sends a text message.
-  - `delete_message(chat_id, message_ids, for_me=False)`: Deletes messages.
-  - `edit_message(chat_id, message_id, text)`: Edits a message.
- 
-- **Decorators**:
-  - `on_message(filter)`: Decorator for handling messages with a filter.
-  - `on_connect(func)`: Decorator for handling connection events.
+---
 
-### `Name`
-Stores name information for a contact.
+## Обработка событий и фильтры
 
-- **Attributes**: `name`, `first_name`, `last_name`, `type`.
+Диспетчер событий работает аналогично Pyrogram. Вешаете декоратор `@client.on_message(фильтр)` на асинхронную функцию:
 
-### `Contact`
-Represents a contact's profile information.
+```python
+@client.on_message(filters.command("ping"))
+async def handle_ping(client, message):
+    await message.reply("pong")
+```
 
-- **Attributes**: `accountStatus`, `base_url`, `names` (list of `Name`), `phone`, `description`, `options`, `photo_id`, `update_time`, `id`, `base_raw_url`.
+### Доступные фильтры
 
-### `User`
-Wraps a `Contact` to represent a user.
+- `filters.all` / `filters.any` — пропускает любые сообщения.
+- `filters.me` — сообщения, отправленные текущим аккаунтом (для юзерботов).
+- `filters.private` — сообщения из личных диалогов (1-на-1).
+- `filters.group` — сообщения из групповых чатов.
+- `filters.channel` — сообщения из каналов.
+- `filters.reply` — сообщения, являющиеся ответом на другое сообщение.
+- `filters.media` — сообщения с любым медиавложением.
+- `filters.photo` — сообщения с фотографией.
+- `filters.document` — сообщения с документом/файлом.
+- `filters.voice` — голосовые сообщения.
+- `filters.video` — видеозаписи.
+- `filters.sticker` — стикеры.
+- `filters.command("команда", prefixes=["/", "."])` — команды с префиксами.
+- `filters.text("текст")` или `filters.text(["текст1", "текст2"])` — совпадение по тексту.
+- `filters.regex(r"^тест\s+(\d+)$")` — регулярные выражения.
+- `filters.sender(user_id)` — сообщения от конкретного пользователя.
+- `filters.chat(chat_id)` — сообщения из конкретного чата.
+- `filters.state(MyState)` — фильтр по шагу FSM диалога.
 
-- **Attributes**: `contact`.
+### Комбинирование фильтров
 
-### `Chat`
-Represents a chat in the messaging system.
+Фильтры можно объединять стандартными логическими операторами Python:
+- `&` — логическое И (AND)
+- `|` — логическое ИЛИ (OR)
+- `~` — логическое НЕ (NOT)
+- `^` — исключающее ИЛИ (XOR)
 
-- **Attributes**: `_client`, `id`.
+Пример:
 
-### `Message`
-Represents a message in a chat.
+```python
+# Только мои сообщения с командой .ping
+@client.on_message(filters.me & filters.command("ping", prefixes="."))
+async def ping(client, message):
+    await message.reply("Pong!")
 
-- **Attributes**: `_client`, `chat`, `sender`, `id`, `time`, `text`, `type`, `update_time`, `options`, `cid`, `attaches`.
-- **Methods**:
-  - `reply(text, **kwargs)`: Replies to the message.
-  - `answer(text, **kwargs)`: Sends a new message in the same chat.
-  - `delete(for_me=False)`: Deletes the message.
-  - `edit(text)`: Edits the message's text.
+# Чужие сообщения в ЛС, содержащие слово 'привет' или 'ку'
+@client.on_message(~filters.me & filters.private & (filters.text("привет") | filters.text("ку")))
+async def hello(client, message):
+    await message.reply("Приветствую!")
+```
 
-### Filter Classes
-- **`Filter`**: Base class for filters, supporting `&`, `|`, and `~` operators.
-- **`AndFilter`**: Combines filters with logical AND.
-- **`OrFilter`**: Combines filters with logical OR.
-- **`NotFilter`**: Negates a filter.
-- **`text`**: Matches exact message text.
-- **`command`**: Matches commands with a prefix.
-- **`user_id`**: Matches messages from a user ID.
-- **`me`**: Matches messages from the authenticated user.
-- **`any`**: Passes all messages.
+---
 
-### `Filters`
-A container for filter factories and instances (`text`, `command`, `user_id`, `me`, `any`).
+## Методы моделей (Bound Methods)
 
-## Requirements
+Все объекты (`Message`, `Chat`, `User`) привязаны к клиенту, поэтому методы действий можно вызывать прямо из них, как в Pyrogram.
 
-- Python 3.7+
-- `websockets` library for WebSocket communication
-- `requests` library for image uploads
-- A valid Max service authentication token or phone number
+### Объект `Message`
 
-## Contributing
+```python
+# Ответ на сообщение с цитатой
+await message.reply("Текст ответа")
 
-Contributions are welcome! Please follow these steps:
+# Ответ в тот же чат без цитаты
+await message.answer("Просто сообщение в чат")
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit (`git commit -m "Add your feature"`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
+# Ответ с фото
+await message.reply_photo("path/to/pic.jpg", caption="Описание")
 
-## License
+# Ответ с файлом
+await message.reply_document("archive.zip")
 
-This project is licensed under the General Public License v3.0. See the [LICENSE](LICENSE) file for details.
+# Редактирование своего сообщения
+await message.edit("Обновленный текст")
 
-## Disclaimer
+# Удаление сообщения
+await message.delete()
 
-This library is unofficial and not affiliated with the Max messaging service. Use it at your own risk, and ensure compliance with the service's terms of use.
+# Поставить реакцию на сообщение
+await message.react("❤️")
+
+# Убрать свою реакцию
+await message.remove_reaction()
+
+# Переслать в другой чат
+await message.forward(to_chat_id=12345678)
+
+# Скачать вложенный медиафайл (фото, голосовое, документ)
+path = await message.download(destination="downloads/")
+```
+
+### Объект `Chat`
+
+```python
+chat = message.chat
+
+# Отправка сообщений
+await chat.send_message("Привет чату")
+await chat.send_photo("image.png", caption="Фото")
+
+# Закрепить/открепить чат в списке
+await chat.pin()
+await chat.unpin()
+
+# История сообщений
+history = await chat.get_history(limit=50)
+
+# Выйти из чата
+await chat.leave()
+
+# Управление участниками
+members = await chat.get_members()
+await chat.add_members([11223344])
+await chat.remove_member(11223344)
+
+# Сменить название
+await chat.set_title("Новое название группы")
+```
+
+### Объект `User`
+
+```python
+user = await message.get_sender()
+
+print(user.name)        # Полное имя
+print(user.first_name)  # Имя
+print(user.phone)       # Телефон
+print(user.id)          # ID пользователя
+
+# Написать в ЛС пользователю
+await user.send_message("Привет в личку!")
+
+# Добавить / заблокировать контакт
+await user.add_contact()
+await user.block()
+await user.unblock()
+
+# Формирование кликабельного упоминания в Markdown
+mention_link = user.mention()  # [Имя](user:123456)
+```
+
+---
+
+## Форматирование текста (Markdown V2 и HTML)
+
+MaxLib сам парсит разметку и превращает ее в нативные бинарные элементы MAX с расчетом UTF-16 смещений.
+
+### Markdown V2 (по умолчанию)
+
+```python
+await message.reply(
+    "**Жирный текст**\n"
+    "_Курсив_\n"
+    "__Подчеркнутый__\n"
+    "~~Зачеркнутый~~\n"
+    "`Моноширинный код`\n"
+    "```python\nprint('Блок кода')\n```\n"
+    "||Скрытый спойлер||\n"
+    "[Ссылка на сайт](https://max.ru)"
+)
+```
+
+### HTML
+
+```python
+await client.send_html(
+    chat_id,
+    "<b>Жирный</b>, <i>курсив</i>, <u>подчеркнутый</u>, <s>зачеркнутый</s>, "
+    "<code>код</code>, <tg-spoiler>спойлер</tg-spoiler>, "
+    "<a href='https://max.ru'>Ссылка</a>"
+)
+```
+
+---
+
+## Отправка и скачивание медиа
+
+Для больших файлов есть поддержка отслеживания прогресса:
+
+```python
+from maxlib import MaxClient, UploadProgress, DownloadProgress
+
+client = MaxClient("me")
+
+
+def upload_cb(prog: UploadProgress):
+    print(f"Загрузка: {prog.percentage:.1f}% | Скорость: {prog.speed / 1024:.1f} KB/s")
+
+
+def download_cb(prog: DownloadProgress):
+    print(f"Скачивание: {prog.percentage:.1f}%")
+
+
+# Отправка фото
+await client.send_photo(
+    chat_id=123456,
+    photo="photo.jpg",
+    caption="Мое фото",
+    progress_callback=upload_cb
+)
+
+# Отправка документа
+await client.send_document(
+    chat_id=123456,
+    document="report.pdf",
+    caption="Отчет",
+    progress_callback=upload_cb
+)
+
+# Скачивание файла из полученного сообщения
+@client.on_message(filters.media)
+async def handle_media(client, message):
+    file_path = await client.download_media(message, progress_callback=download_cb)
+    print(f"Сохранено в: {file_path}")
+```
+
+---
+
+## Асинхронные итераторы (Пагинация)
+
+Чтобы не возиться со смещениями, маркерами времени и порциями данных вручную:
+
+```python
+# Итерация по истории сообщений в чате
+async for msg in client.iter_history(chat_id=123456, limit=150):
+    print(f"{msg.time}: {msg.text}")
+
+# Итерация по списку диалогов
+async for chat in client.iter_dialogs(limit=50):
+    print(f"Чат: {chat.title or chat.id}")
+```
+
+---
+
+## Пошаговые диалоги (FSM / Finite State Machine)
+
+Если вам нужно сделать опрос, регистрацию или многошаговый диалог:
+
+```python
+from maxlib import MaxClient, filters, Message, State, StatesGroup
+
+client = MaxClient("survey_bot")
+
+
+class Form(StatesGroup):
+    name = State()
+    age = State()
+
+
+@client.on_message(filters.command("start"))
+async def cmd_start(client: MaxClient, message: Message):
+    await client.fsm.set_state(message.chat_id, message.sender_id, Form.name)
+    await message.reply("Привет! Как вас зовут?")
+
+
+@client.on_message(filters.state(Form.name))
+async def step_name(client: MaxClient, message: Message):
+    await client.fsm.update_data(message.chat_id, message.sender_id, name=message.text)
+    await client.fsm.set_state(message.chat_id, message.sender_id, Form.age)
+    await message.reply(f"Приятно познакомиться, {message.text}! Сколько вам лет?")
+
+
+@client.on_message(filters.state(Form.age))
+async def step_age(client: MaxClient, message: Message):
+    if not message.text.isdigit():
+        return await message.reply("Пожалуйста, введите возраст числом.")
+
+    data = await client.fsm.update_data(message.chat_id, message.sender_id, age=int(message.text))
+    await client.fsm.clear(message.chat_id, message.sender_id)
+    await message.reply(f"Анкета заполнена!\nИмя: {data['name']}\nВозраст: {data['age']}")
+
+
+client.run()
+```
+
+---
+
+## Мульти-аккаунты (`ClientPool`)
+
+Если нужно держать много аккаунтов на одном сервере или запустить пул юзерботов:
+
+```python
+from maxlib import ClientPool, filters, Message
+
+pool = ClientPool()
+pool.create("acc1", phone="+79991112233")
+pool.create("acc2", phone="+79992223344")
+
+
+@pool.on_message(filters.command("ping", prefixes="."))
+async def on_ping(client, message: Message):
+    await message.reply(f"Pong от {client.me.name} (ID: {client.me.id})")
+
+
+if __name__ == "__main__":
+    pool.run()
+```
+
+---
+
+## Лицензия
+
+GNU General Public License v3.0 (GPL-3.0). Свободное использование и модификация.
